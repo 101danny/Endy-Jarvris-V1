@@ -1,92 +1,79 @@
-const config = {
+module.exports = {
+  config: {
     name: "slot",
-    aliases: ["lucky7", "7slot"],
-    description: "Play the lucky 7 slot machine betting game.\n🎰[𝐋𝐮𝐜𝐤𝐲𝟕]🎰\n━━━━━━━━━━━━━━\n7⃣7⃣7⃣ = 100x bet\n🍒🍉🍎🍌🍋🍓🍇 = 2x/4x bet\n❎ = lose",
-    usage: "<bet>",
-    cooldown: 8,
-    credits: "Duke Agustin",
-    extra: {
-        minbet: 50
+    version: "1.0",
+    author: "Samir",
+    shortDescription: {
+      en: "Slot game",
+    },
+    longDescription: {
+      en: "Slot game.",
+    },
+    category: "Games",
+  },
+  langs: {
+    en: {
+      invalid_amount: "Enter a valid and positive amount to have a chance to win double",
+      not_enough_money: "Check your balance if you have that amount",
+      spin_message: "Spinning...",
+      win_message: "You won $%1, buddy!",
+      lose_message: "You lost $%1, buddy.",
+      jackpot_message: "Jackpot! You won $%1 with three %2 symbols, buddy!",
+    },
+  },
+  onStart: async function ({ args, message, event, envCommands, usersData, commandName, getLang }) {
+    const { senderID } = event;
+    const userData = await usersData.get(senderID);
+    const amount = parseInt(args[0]);
+
+    if (isNaN(amount) || amount <= 0) {
+      return message.reply(getLang("invalid_amount"));
     }
+
+    if (amount > userData.money) {
+      return message.reply(getLang("not_enough_money"));
+    }
+
+    const slots = ["🍒", "🍇", "🍊", "🍉", "🍋", "🍎", "🍓", "🍑", "🥝"];
+    const slot1 = slots[Math.floor(Math.random() * slots.length)];
+    const slot2 = slots[Math.floor(Math.random() * slots.length)];
+    const slot3 = slots[Math.floor(Math.random() * slots.length)];
+
+    const winnings = calculateWinnings(slot1, slot2, slot3, amount);
+
+    await usersData.set(senderID, {
+      money: userData.money + winnings,
+      data: userData.data,
+    });
+
+    const messageText = getSpinResultMessage(slot1, slot2, slot3, winnings, getLang);
+
+    return message.reply(messageText);
+  },
+};
+
+function calculateWinnings(slot1, slot2, slot3, betAmount) {
+  if (slot1 === "🍒" && slot2 === "🍒" && slot3 === "🍒") {
+    return betAmount * 10;
+  } else if (slot1 === "🍇" && slot2 === "🍇" && slot3 === "🍇") {
+    return betAmount * 5;
+  } else if (slot1 === slot2 && slot2 === slot3) {
+    return betAmount * 3;
+  } else if (slot1 === slot2 || slot1 ===slot3 || slot2 === slot3) {
+    return betAmount * 2;
+  } else {
+    return -betAmount;
+  }
 }
 
-const langData = {
-    "en_US": {
-        "slot.userNoData": "Your data is not ready yet.",
-        "slot.notEnoughMoney": "You don't have enough money to place this bet.",
-        "slot.minMoney": "Minimum bet is ${min} 💸.",
-        "slot.win2x": "🎰[ {symbols} ]🎰\n𝚈𝚘𝚞 𝚠𝚒𝚗 𝟸𝚡 𝚢𝚘𝚞𝚛 𝚋𝚎𝚝! 𝚈𝚘𝚞 𝚐𝚎𝚝 ${money} 💵.",
-        "slot.win4x": "🎰[ {symbols} ]🎰\n𝚈𝚘𝚞 𝚠𝚒𝚗 𝟺𝚡 𝚢𝚘𝚞𝚛 𝚋𝚎𝚝! 𝚈𝚘𝚞 𝚐𝚎𝚝 ${money} 💵.",
-        "slot.win100x": "🎰[ {symbols} ]🎰\n𝐉𝐚𝐜𝐤𝐩𝐨𝐭! 𝗬𝗼𝘂 𝘄𝗶𝗻 𝟭𝟬𝟬𝘅 𝘆𝗼𝘂𝗿 𝗯𝗲𝘁! 𝗬𝗼𝘂 𝗴𝗲𝘁 ${money} 💵.",
-        "slot.lose": "🎰[ {symbols} ]🎰\nYou lose ${money} 💸.",
-        "any.error": "An error has occurred. Please try again later."
+function getSpinResultMessage(slot1, slot2, slot3, winnings, getLang) {
+  if (winnings > 0) {
+    if (slot1 === "🍒" && slot2 === "🍒" && slot3 === "🍒") {
+      return getLang("jackpot_message", winnings, "🍒");
+    } else {
+      return getLang("win_message", winnings) + `\{slot1} | ${slot2} | ${slot3} ]`;
     }
-}
-
-const symbols = ["🍒", "🍉", "🍎", "🍌", "🍓", "🍇", "7⃣", "❎", "❎"];
-
-async function onCall({ message, args, extra, getLang }) {
-    const { Users } = global.controllers;
-    const bet = BigInt(args[0] || extra.minbet);
-
-    try {
-        const userMoney = await Users.getMoney(message.senderID) || null;
-        if (userMoney === null) return message.reply(getLang("slot.userNoData"));
-        if (BigInt(userMoney) < bet) return message.reply(getLang("slot.notEnoughMoney"));
-        if (bet < BigInt(extra.minbet)) return message.reply(getLang("slot.minMoney", { min: extra.minbet }));
-
-        await Users.decreaseMoney(message.senderID, bet);
-
-        
-        const result = [];
-        for (let i = 0; i < 3; i++) {
-            const randomIndex = Math.floor(Math.random() * symbols.length);
-            result.push(symbols[randomIndex]);
+  } else {
+    return getLang("lose_message", -winnings) + `\{slot1} | ${slot2} | ${slot3} ]`;
+  }
         }
-
-        const uniqueSymbols = [...new Set(result)]; 
-        const symbolCount = uniqueSymbols.length;
-
-        if (!uniqueSymbols.includes("❎")) {
-           
-            const winAmount = bet * BigInt(2);
-            message.reply(getLang("slot.win2x", { symbols: result.join(" | "), money: String(winAmount) }));
-            await Users.increaseMoney(message.senderID, winAmount);
-        } else if (uniqueSymbols.includes("❎")) {
-            
-            message.reply(getLang("slot.lose", { symbols: result.join(" | "), money: String(bet) }));
-        } else if (symbolCount === 1) {
-            
-            const winAmount = bet * BigInt(4);
-            message.reply(getLang("slot.win4x", { symbols: result.join(" | "), money: String(winAmount) }));
-            await Users.increaseMoney(message.senderID, winAmount);
-        } else if (symbolCount === 2 && uniqueSymbols.includes("7⃣")) {
-           
-            const winAmount = bet * BigInt(4);
-            message.reply(getLang("slot.win4x", { symbols: result.join(" | "), money: String(winAmount) }));
-            await Users.increaseMoney(message.senderID, winAmount);
-        } else if (symbolCount === 3 && !uniqueSymbols.includes("7⃣")) {
-           
-            const winAmount = bet * BigInt(2);
-            message.reply(getLang("slot.win2x", { symbols: result.join(" | "), money: String(winAmount) }));
-            await Users.increaseMoney(message.senderID, winAmount);
-        } else if (symbolCount === 3 && uniqueSymbols.every(symbol => symbol === "7⃣")) {
-            
-            const winAmount = bet * BigInt(100);
-            message.reply(getLang("slot.win100x", { symbols: result.join(" | "), money: String(winAmount) }));
-            await Users.increaseMoney(message.senderID, winAmount);
-        } else {
-            
-            message.reply(getLang("slot.lose", { symbols: result.join(" | "), money: String(bet) }));
-        }
-    } catch (error) {
-        console.error(error);
-        return message.reply(getLang("any.error"));
-    }
-}
-
-export default {
-    config,
-    langData,
-    onCall
-    }
